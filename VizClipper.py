@@ -1,12 +1,10 @@
 from os import access as os_acc, F_OK, X_OK
 from os.path import join as os_pjoin
 from subprocess import Popen, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW
-from sys import argv, hexversion
 import tkinter as tk
 import tkinter.messagebox as tkmsg
 import tkinter.ttk as ttk
 import tkinter.filedialog as tkfd
-import tkinter.font as tkf
 import re
 import time
 
@@ -19,13 +17,6 @@ DEFAULT_PATHS = {
     'C:/Program Files/Vizrt/Viz3/ev_send.exe'       : '3.14',
     'C:/Program Files (x86)/VizDBG/ev_send.exe'     : 'DBG',
 }
-
-def genfonts():
-    global FONTS
-    FONTS = {
-        'title'    : tkf.Font(family = 'Arial', size = '36', weight = 'bold'),
-        'subtitle' : tkf.Font(family = 'Arial', size = '18', weight = 'bold'),
-    }
 
 
 
@@ -56,8 +47,8 @@ class Clipper(ttk.Frame):
         super().__init__(master = root)
         self.root = root
         self.pack(fill = tk.BOTH, expand = 1)
-        #
-        self.training_counter = 0###
+        self.root.resizable(0, 0)
+        self.STYLE = ttk.Style()
         #
         self.tStamp, self.tDuration, self.tLimit = None, None, None
         self.ftRec = None
@@ -92,6 +83,7 @@ class Clipper(ttk.Frame):
         else:
             self.master.title('Clipper v0.0')
             self.initUI()
+            self.style_setup()
         self.startup()
         ### Binding logger
         for k in ('<Left>', '<Right>', '<Up>', '<Down>'):
@@ -99,15 +91,15 @@ class Clipper(ttk.Frame):
     
     def initUI(self):
         # Labeling panels
-        ttk.Label(self, text = 'Clipout Recorder', anchor = tk.CENTER, font = FONTS['title'], relief = 'raised')\
+        ttk.Label(self, text = 'Clipout Recorder', style = 'h0.TLabel')\
             .grid(row = 1, column = 1, columnspan = 3, sticky='news', ipadx = 10, ipady = 10)
-        ttk.Label(self, text = 'Output File Settings', anchor = tk.CENTER, font = FONTS['subtitle'], relief = 'raised')\
+        ttk.Label(self, text = 'Output File Settings', style = 'h1.TLabel')\
             .grid(row = 3, column = 1, sticky='news', ipadx = 5, ipady = 5)
-        ttk.Label(self, text = 'Record Length', anchor = tk.CENTER, font = FONTS['subtitle'], relief = 'raised')\
+        ttk.Label(self, text = 'Record Length', style = 'h1.TLabel')\
             .grid(row = 3, column = 3, sticky='news', ipadx = 5, ipady = 5)
-        ttk.Label(self, text = 'Animation Control', anchor = tk.CENTER, font = FONTS['subtitle'], relief = 'raised')\
+        ttk.Label(self, text = 'Animation Control', style = 'h1.TLabel')\
             .grid(row = 7, column = 1, sticky='news', ipadx = 5, ipady = 5)
-        ttk.Label(self, text = 'Record Control', anchor = tk.CENTER, font = FONTS['subtitle'], relief = 'raised')\
+        ttk.Label(self, text = 'Record Control', style = 'h1.TLabel')\
             .grid(row = 7, column = 3, sticky='news', ipadx = 5, ipady = 5)
 
         # Configuring the grid
@@ -123,8 +115,9 @@ class Clipper(ttk.Frame):
         sp.grid(row = 11, column = 1, columnspan = 3, sticky = 'news')
         sp.columnconfigure(0, weight = 3)
         sp.columnconfigure(1, weight = 1)
-        ttk.Label(sp, textvariable = self.strvars['stat']).grid(row = 0, column = 0, sticky = 'nws')
-        ttk.Label(sp, textvariable = self.strvars['conn'], justify = tk.RIGHT).grid(row = 0, column = 1, padx = (10, 0), sticky = 'nes')
+        ttk.Label(sp, textvariable = self.strvars['stat'], style = 'status.TLabel').grid(row = 0, column = 0, sticky = 'nws')
+        ttk.Label(sp, textvariable = self.strvars['conn'], style = 'status.TLabel', justify = tk.RIGHT)\
+            .grid(row = 0, column = 1, padx = (10, 0), sticky = 'nes')
         
         # Logger setup
         self.LOGTEXT = tk.StringVar(self.master)
@@ -141,7 +134,7 @@ class Clipper(ttk.Frame):
         self.weFN.grid(row = 1, column = 0, sticky = 'news')
         p1 = ttk.Frame(p0)
         p1.grid(row = 2, column = 0, sticky = 'news')
-        ttk.Label(p1, text = 'Directory:').pack(side = 'left', expand = 1)
+        ttk.Label(p1, text = 'Directory:').pack(side = 'left')
         ttk.Button(p1, text = 'Browse', command = self.clipdir_dialogue).pack(side = 'right')
         self.weDir = ttk.Entry(p0, textvariable = self.strvars['dir'])
         self.weDir.grid(row = 3, column = 0, sticky = 'news')
@@ -150,24 +143,24 @@ class Clipper(ttk.Frame):
         p0 = ttk.Frame(self)
         p0.grid(row = 5, column = 3, sticky = 'news')
         p0.columnconfigure(0, weight = 1)
-        self.wcLenUnlimited = tk.Checkbutton(
-            p0, text = 'Unlimited', anchor = tk.CENTER, variable = self.intvars['unlim']
+        self.wcLenUnlimited = ttk.Checkbutton(
+            p0, text = 'Unlimited', style = 'centered.TCheckbutton', variable = self.intvars['unlim']
         )
-        self.wcLenUnlimited.select()
-        self.wcLenUnlimited.grid(row = 0, column = 0, sticky = 'news')
+        self.intvars['unlim'].set(1)
+        self.wcLenUnlimited.grid(row = 0, column = 0, sticky = 'ns')
         p1 = ttk.Frame(p0)
         p1.grid(row = 1, column = 0, sticky = 'news')
         p1.columnconfigure(0, weight = 1)
         p2 = ttk.Frame(p1)
         p2.grid(row = 0, column = 0, sticky = 'news')
         p2.columnconfigure(0, weight = 1)
-        self.wrLenFrames = tk.Radiobutton(p2, text = 'Frames', variable = self.strvars['lentype'], value = 'frames')
+        self.wrLenFrames = ttk.Radiobutton(p2, text = 'Frames', variable = self.strvars['lentype'], value = 'frames')
         self.wrLenFrames.pack(side = 'left', expand = 1)
-        self.wrLenSeconds = tk.Radiobutton(p2, text = 'Seconds', variable = self.strvars['lentype'], value = 'seconds')
-        self.wrLenSeconds.select()
+        self.wrLenSeconds = ttk.Radiobutton(p2, text = 'Seconds', variable = self.strvars['lentype'], value = 'seconds')
+        self.strvars['lentype'].set('seconds')
         self.wrLenSeconds.pack(side = 'right', expand = 1)
         validator = self.register(lambda x: not self.RELim.match(x) is None)
-        self.weLenVal = tk.Entry(p1, textvariable = self.strvars['reclen'], validate='all',\
+        self.weLenVal = ttk.Entry(p1, textvariable = self.strvars['reclen'], validate='all',\
             validatecommand=(validator, '%P'))
         self.weLenVal.grid(row = 1, column = 0)
 
@@ -192,16 +185,16 @@ class Clipper(ttk.Frame):
         ttk.Button(p1, text = 'Stop', command = self.anim_stop).grid(row = 0, column = 1, sticky = 'news')
         ttk.Button(p1, text = 'Start', command = self.anim_start, state = 'disabled').grid(row = 1, column = 0, sticky = 'news')
         ttk.Button(p1, text = 'Continue', command = self.anim_cont).grid(row = 1, column = 1, sticky = 'news')
-        self.wcSync = tk.Checkbutton(
-            p0, text = 'Synchronize with recording', anchor = tk.CENTER, variable = self.intvars['sync']
+        self.wcSync = ttk.Checkbutton(
+            p0, text = 'Synchronize with recording', style = 'centered.TCheckbutton', variable = self.intvars['sync']
         )
-        self.wcSync.select()
-        self.wcSync.grid(row = 2, column = 0, pady = (0, 0), sticky = 'news')
+        self.intvars['sync'].set(1)
+        self.wcSync.grid(row = 2, column = 0, pady = (0, 0), sticky = 'ns')
         p1 = ttk.Frame(p0)
         p1.grid(row = 3, column = 0, sticky = 'news')
         p1.columnconfigure(0, weight = 1)
-        self.wcSyncDelay = tk.Checkbutton(
-            p1, text = 'Animation delay:', anchor = tk.CENTER, variable = self.intvars['sync_delay_chk']
+        self.wcSyncDelay = ttk.Checkbutton(
+            p1, text = 'Animation delay:', style = 'centered.TCheckbutton', variable = self.intvars['sync_delay_chk']
         )
         self.wcSyncDelay.grid(row = 0, column = 0, sticky = 'news')
         self.wsSyncDelayVal = ttk.Spinbox(p1, from_ = -60, to = 60, increment = 1, textvariable = self.strvars['sync_delay_val'], width = 8)
@@ -213,20 +206,21 @@ class Clipper(ttk.Frame):
         p0 = ttk.Frame(self)
         p0.grid(row = 9, column = 3, sticky = 'news')
         p0.columnconfigure(0, weight = 1)
-        tk.Label(p0, text = 'Current recording time:', anchor = tk.CENTER).grid(row = 0, column = 0, sticky = 'news')
-        tk.Label(p0, textvar = self.strvars['curdur'], anchor = tk.CENTER, bg = '#004040', fg = '#00e0e0')\
+        p0.rowconfigure(2, weight = 1)
+        ttk.Label(p0, text = 'Current recording time:', style = 'centered.TLabel').grid(row = 0, column = 0, sticky = 'news')
+        ttk.Label(p0, textvar = self.strvars['curdur'], style = 'timer.TLabel')\
             .grid(row = 1, column = 0, sticky = 'news', pady = 10)
         p1 = ttk.Frame(p0)
-        p1.grid(row = 2, column = 0, sticky = 'news')
+        p1.grid(row = 2, column = 0, sticky = 'ew')
         p1.rowconfigure(0, weight = 1)
         p1.columnconfigure(0, weight = 1)
         p1.columnconfigure(1, weight = 1)
         p1.columnconfigure(2, weight = 1)
-        self.wbRCI = tk.Button(p1, text = 'Set\n---\nReset', command = self.rctrl_reset, justify = tk.CENTER)
+        self.wbRCI = ttk.Button(p1, text = 'Set\n---\nReset', command = self.rctrl_reset, style = 'rctrl.TButton')
         self.wbRCI.grid(row = 0, column = 0, sticky = 'news')
-        self.wbRCR = tk.Button(p1, text = 'Record', command = self.rctrl_go)
+        self.wbRCR = ttk.Button(p1, text = 'Record', command = self.rctrl_go, style = 'rctrl.TButton')
         self.wbRCR.grid(row = 0, column = 1, sticky = 'news')
-        self.wbRCS = tk.Button(p1, text = 'Stop', command = self.rctrl_stop)
+        self.wbRCS = ttk.Button(p1, text = 'Stop', command = self.rctrl_stop, style = 'rctrl.TButton')
         self.wbRCS.grid(row = 0, column = 2, sticky = 'news')
         self._manage_wrc('stop')
         #
@@ -610,7 +604,30 @@ class Clipper(ttk.Frame):
     def anim_cont(self):
         self.isend('-1 RENDERER*STAGE CONTINUE')
 
+    def style_setup(self):
+        self.STYLE.configure('h0.TLabel',
+            font = ('Arial', 36, 'bold'),
+            anchor = tk.CENTER,
+            relief = tk.RAISED
+        )
+        self.STYLE.configure('h1.TLabel',
+            font = ('Arial', 18, 'bold'),
+            anchor = tk.CENTER,
+            relief = tk.RAISED
+        )
+        self.STYLE.configure('centered.TLabel', anchor = tk.CENTER)
+        self.STYLE.configure('timer.TLabel',
+            anchor = tk.CENTER, background = '#004040', foreground = '#00e0e0',
+            padding = (0, 10), font = ('default', 12, 'bold')
+        )
+        self.STYLE.configure('status.TLabel', anchor = tk.CENTER, foreground = '#0000a0')
+        #
+        self.STYLE.configure('rctrl.TButton', justify = tk.CENTER, padding = (-6, 0))
+        #
+        self.STYLE.configure('centered.TCheckbutton', anchor = tk.CENTER)
+
     def training_setup(self, frame):
+        self.training_counter = 0###
         frame.columnconfigure(3, weight = 1)###
         self.wbTRN = tk.Button(frame, text = 'NEW\nBUTTON', command = self.training_func)###
         self.wbTRN.grid(row = 0, column = 3, sticky = 'news')###
@@ -619,16 +636,17 @@ class Clipper(ttk.Frame):
         self.training_counter += 1###
         self.strvars['stat'].set(f'Нажатий кнопки: {self.training_counter}')###
 
+###
+
+
+
 
 
 ###
 
 def main():
     root = tk.Tk()
-    genfonts()
-    w, h, x, y = 660, 660, 300, 200
-    #root.geometry(f'{w}x{h}+{x}+{y}')
-    app = Clipper(root)
+    Clipper(root)
     root.mainloop()
 
 if __name__ == '__main__':
