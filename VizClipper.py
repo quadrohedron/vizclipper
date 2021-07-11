@@ -1,7 +1,9 @@
 from os import access as os_acc, F_OK, X_OK
+from os.path import join as os_pjoin
 from subprocess import Popen, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW
 from sys import argv, hexversion
 import tkinter as tk
+import tkinter.messagebox as tkmsg
 import tkinter.ttk as ttk
 import tkinter.filedialog as tkfd
 import tkinter.font as tkf
@@ -95,19 +97,6 @@ class Clipper(ttk.Frame):
         for k in ('<Left>', '<Right>', '<Up>', '<Down>'):
             self.master.bind(k, lambda e: self._lla(e.keycode))
     
-    '''def __getattr__(self, name):
-        def f(*a, **k):
-            if not a or k:
-                self._log('blep', f'{name} called', 'W')
-            text = f'{name} called'
-            if a:
-                text += f'\nargs:   {a}'
-            if k:
-                text += f'\nkwargs: {k}'
-            self._log('blep', text, 'W')
-        f.__repr__ = name
-        return f'''
-    
     def initUI(self):
         # Labeling panels
         ttk.Label(self, text = 'Clipout Recorder', anchor = tk.CENTER, font = FONTS['title'], relief = 'raised')\
@@ -138,9 +127,7 @@ class Clipper(ttk.Frame):
         ttk.Label(sp, textvariable = self.strvars['conn'], justify = tk.RIGHT).grid(row = 0, column = 1, padx = (10, 0), sticky = 'nes')
         
         # Logger setup
-        self.LOGGER = ReadOnlyText(self, width = 40, wrap = tk.WORD)
-        self.LOGPAD = tk.Frame(self, width = 10, height = 0)
-        self.LPW = self.LOGGER.winfo_reqwidth()+10
+        self.LOGTEXT = tk.StringVar(self.master)
 
         # FP panel
         p0 = ttk.Frame(self)
@@ -150,7 +137,6 @@ class Clipper(ttk.Frame):
         self.weFN = ttk.Entry(p0, textvariable = self.strvars['fn'])
         def weFN_func(event):
             self.focus()
-            self.switch_wbrc()
         self.weFN.bind('<Return>', weFN_func)
         self.weFN.grid(row = 1, column = 0, sticky = 'news')
         p1 = ttk.Frame(p0)
@@ -165,8 +151,7 @@ class Clipper(ttk.Frame):
         p0.grid(row = 5, column = 3, sticky = 'news')
         p0.columnconfigure(0, weight = 1)
         self.wcLenUnlimited = tk.Checkbutton(
-            p0, text = 'Unlimited', anchor = tk.CENTER,
-            command = self.toggle_lenlim, variable = self.intvars['unlim']
+            p0, text = 'Unlimited', anchor = tk.CENTER, variable = self.intvars['unlim']
         )
         self.wcLenUnlimited.select()
         self.wcLenUnlimited.grid(row = 0, column = 0, sticky = 'news')
@@ -185,7 +170,6 @@ class Clipper(ttk.Frame):
         self.weLenVal = tk.Entry(p1, textvariable = self.strvars['reclen'], validate='all',\
             validatecommand=(validator, '%P'))
         self.weLenVal.grid(row = 1, column = 0)
-        self.toggle_lenlim()
 
         # AC panel
         p0 = ttk.Frame(self)
@@ -204,13 +188,12 @@ class Clipper(ttk.Frame):
         for i in range(2):
             p1.rowconfigure(i, weight = 1)
             p1.columnconfigure(i, weight = 1)
-        ttk.Button(p1, text = 'Reset', command = self.anim_reset).grid(row = 0, column = 0, sticky = 'news')
+        ttk.Button(p1, text = 'Reset', command = self.anim_reset, state = 'disabled').grid(row = 0, column = 0, sticky = 'news')
         ttk.Button(p1, text = 'Stop', command = self.anim_stop).grid(row = 0, column = 1, sticky = 'news')
-        ttk.Button(p1, text = 'Start', command = self.anim_start).grid(row = 1, column = 0, sticky = 'news')
+        ttk.Button(p1, text = 'Start', command = self.anim_start, state = 'disabled').grid(row = 1, column = 0, sticky = 'news')
         ttk.Button(p1, text = 'Continue', command = self.anim_cont).grid(row = 1, column = 1, sticky = 'news')
         self.wcSync = tk.Checkbutton(
-            p0, text = 'Synchronize with recording', anchor = tk.CENTER,
-            command = self.toggle_sync, variable = self.intvars['sync']
+            p0, text = 'Synchronize with recording', anchor = tk.CENTER, variable = self.intvars['sync']
         )
         self.wcSync.select()
         self.wcSync.grid(row = 2, column = 0, pady = (0, 0), sticky = 'news')
@@ -218,8 +201,7 @@ class Clipper(ttk.Frame):
         p1.grid(row = 3, column = 0, sticky = 'news')
         p1.columnconfigure(0, weight = 1)
         self.wcSyncDelay = tk.Checkbutton(
-            p1, text = 'Animation delay:', anchor = tk.CENTER,
-            command = self.toggle_sync_delay, variable = self.intvars['sync_delay_chk']
+            p1, text = 'Animation delay:', anchor = tk.CENTER, variable = self.intvars['sync_delay_chk']
         )
         self.wcSyncDelay.grid(row = 0, column = 0, sticky = 'news')
         self.wsSyncDelayVal = ttk.Spinbox(p1, from_ = -60, to = 60, increment = 1, textvariable = self.strvars['sync_delay_val'], width = 8)
@@ -240,16 +222,35 @@ class Clipper(ttk.Frame):
         p1.columnconfigure(0, weight = 1)
         p1.columnconfigure(1, weight = 1)
         p1.columnconfigure(2, weight = 1)
-        p1.columnconfigure(3, weight = 1)###
-        self.wbRCI = tk.Button(p1, text = 'Set\n---\nReset', command = self.rctrl_reset, justify = tk.CENTER, state = 'disabled')
+        self.wbRCI = tk.Button(p1, text = 'Set\n---\nReset', command = self.rctrl_reset, justify = tk.CENTER)
         self.wbRCI.grid(row = 0, column = 0, sticky = 'news')
-        self.wbRCR = tk.Button(p1, text = 'Record', command = self.rctrl_go, state = 'disabled')
+        self.wbRCR = tk.Button(p1, text = 'Record', command = self.rctrl_go)
         self.wbRCR.grid(row = 0, column = 1, sticky = 'news')
-        self.wbRCS = tk.Button(p1, text = 'Stop', command = self.rctrl_stop, state = 'disabled')
+        self.wbRCS = tk.Button(p1, text = 'Stop', command = self.rctrl_stop)
         self.wbRCS.grid(row = 0, column = 2, sticky = 'news')
-        self.wbTRN = tk.Button(p1, text = 'NEW\nBUTTON', command = self.training_func)###
-        self.wbTRN.grid(row = 0, column = 3, sticky = 'news')###
-        self.switch_wbrc(False)
+        self._manage_wrc('stop')
+        #
+        self.training_setup(p1)
+        
+        # Setting up widget state interactions
+        def unlim_cb(*args):
+            state = 'disabled' if self.intvars['unlim'].get() else 'normal'
+            for w in (self.wrLenFrames, self.wrLenSeconds, self.weLenVal):
+                w.config(state = state)
+        self.intvars['unlim'].trace_add('write', unlim_cb)
+        unlim_cb()
+        def sync_cb(*args):
+            f = self.intvars['sync'].get()
+            state = 'normal' if f else 'disabled'
+            self.wcSyncDelay.config(state = state)
+            state = 'normal' if f and self.intvars['sync_delay_chk'].get() else 'disabled'
+            self.wsSyncDelayVal.config(state = state)
+        self.intvars['sync'].trace_add('write', sync_cb)
+        sync_cb()
+        def syncdel_cb(*args):
+            state = 'normal' if self.intvars['sync_delay_chk'].get() else 'disabled'
+            self.wsSyncDelayVal.config(state = state)
+        self.intvars['sync_delay_chk'].trace_add('write', syncdel_cb)
 
         # Log on completion
         self._log('init', 'UI init complete.')
@@ -331,6 +332,29 @@ class Clipper(ttk.Frame):
         self.columnconfigure(2, weight = 4)
         self.rowconfigure(5, weight = 3)
     
+    def _manage_wrc(self, state):
+        if state in (0, 1, True, False):
+            state = 'normal' if state else 'disabled'
+        if state in ('normal', 'disabled'):
+            for w in (self.wbRCI, self.wbRCR, self.wbRCS):
+                w.config(state = state)
+                return None
+        if state == 'set':
+            self.wbRCI.config(state = 'disabled')
+            self.wbRCR.config(state = 'normal')
+            self.wbRCS.config(state = 'disabled')
+            return None
+        if state == 'run':
+            self.wbRCI.config(state = 'disabled')
+            self.wbRCR.config(state = 'disabled')
+            self.wbRCS.config(state = 'normal')
+            return None
+        if state == 'stop':
+            self.wbRCI.config(state = 'normal')
+            self.wbRCR.config(state = 'disabled')
+            self.wbRCS.config(state = 'disabled')
+            return None
+
     def head_repl(self, matchobj):
         res = ''
         g1 = matchobj.group(1)
@@ -363,13 +387,17 @@ class Clipper(ttk.Frame):
     def _llt(self):
         self._llb = not self._llb
         if self._llb:
-            self.master.geometry(f'{self.winfo_width()+self.LPW}x{self.winfo_height()}')
-            self.LOGGER.grid(row = 1, column = 5, rowspan = 9, sticky = 'news')
-            self.LOGPAD.grid(row = 1, column = 6)
+            self.LOGWINDOW = tk.Toplevel(self.root)
+            self.LOGWINDOW.title('Clipper Log')
+            def cb():
+                self._llb = False
+                self.LOGWINDOW.destroy()
+            self.LOGWINDOW.protocol('WM_DELETE_WINDOW', cb)
+            self.LOGGER = ReadOnlyText(self.LOGWINDOW, width = 40, height = 24, wrap = tk.WORD)
+            self.LOGGER.pack()
+            self.LOGGER.insert('1.0', self.LOGTEXT.get())
         else:
-            self.master.geometry(f'{self.winfo_width()-self.LPW}x{self.winfo_height()}')
-            self.LOGGER.grid_forget()
-            self.LOGPAD.grid_forget()
+            self.LOGWINDOW.destroy()
     
     def startup(self):   
         ### Connecting to Viz Engine
@@ -450,12 +478,6 @@ class Clipper(ttk.Frame):
         else:
             self.stattext.set(res.decode().replace('\n', ' \\n '))
     
-    def flip(self):
-        rf = self.state['scene_running']
-        arg = 'RENDERER*STAGE {0}'.format('STOP' if rf else 'CONTINUE')
-        _ = self.runcmd(f'"{self.evs_path}" "{arg}"')
-        self.state['scene_running'] = not rf
-    
     def repl(self):
         code = self.code.get('1.0', tk.END).strip()
         try:
@@ -475,11 +497,9 @@ class Clipper(ttk.Frame):
         line += time.strftime(' [%H:%M:%S] ')
         line += tag + ' : '
         line += text + '\n'
-        self.LOGGER.insert('1.0', line)
-
-    def _update_timer(self, delay = 0.2):
-        if self.RECRUNNING:
-            time.sleep(delay)
+        self.LOGTEXT.set(line+self.LOGTEXT.get())
+        if self._llb:
+            self.LOGGER.insert('1.0', line)
 
     def _update_duration(self, duration, add = True):
         if add:
@@ -495,33 +515,23 @@ class Clipper(ttk.Frame):
         d = tkfd.askdirectory()
         if d:
             self.strvars['dir'].set(d)
-            self.switch_wbrc()
-    
-    def toggle_lenlim(self):
-        s = tk.DISABLED if self.intvars['unlim'].get() else tk.NORMAL
-        for w in (self.wrLenFrames, self.wrLenSeconds, self.weLenVal):
-            w.config(state = s)
-
-    def toggle_sync(self):
-        s = self.intvars['sync'].get()
-        if s:
-            self.wcSyncDelay.config(state = tk.NORMAL)
-            self.wsSyncDelayVal.config(state = tk.NORMAL if self.intvars['sync_delay_chk'].get() else tk.DISABLED)
-        else:
-            self.wcSyncDelay.config(state = tk.DISABLED)
-            self.wsSyncDelayVal.config(state = tk.DISABLED)
-
-    def toggle_sync_delay(self):
-        self.wsSyncDelayVal.config(state = tk.NORMAL if self.intvars['sync_delay_chk'].get() else tk.DISABLED)
-    
-    def switch_wbrc(self, flag = None):
-        if flag == None:
-            flag = (not self.strvars['dir'].get() in ('<directory>', '')) and (not self.strvars['fn'].get() in ('<filename>', ''))
-        state = 'normal' if flag else 'disabled'
-        for w in (self.wbRCI, self.wbRCR, self.wbRCS):
-            w.config(state = state)
 
     def rctrl_reset(self):
+        # check fn and dir
+        missing = []
+        fn, dr = self.strvars['fn'].get(), self.strvars['dir'].get()
+        if fn in ('<filename>', ''):
+            missing.append('filename')
+        if dr in ('<directory>', ''):
+            missing.append('directory')
+        if missing:
+            tkmsg.showinfo('Set parameters', f'Please specify output {" and ".join(missing)}.')
+            return None
+        # check file existing
+        if os_acc(os_pjoin(dr, fn), F_OK):
+            if not tkmsg.askyesno('File exists', 'Do you want to overwrite existing file?'):
+                return None
+        #
         if not self.thread_handle is None:
             self.root.after_cancel(self.thread_handle)
             self.thread_handle = None
@@ -532,6 +542,7 @@ class Clipper(ttk.Frame):
             self.SCENERUNNING = False
         else:
             self.initCO()
+        self._manage_wrc('set')
 
     def rctrl_go(self):
         if not self.intvars['unlim'].get():
@@ -598,7 +609,12 @@ class Clipper(ttk.Frame):
 
     def anim_cont(self):
         self.isend('-1 RENDERER*STAGE CONTINUE')
-    
+
+    def training_setup(self, frame):
+        frame.columnconfigure(3, weight = 1)###
+        self.wbTRN = tk.Button(frame, text = 'NEW\nBUTTON', command = self.training_func)###
+        self.wbTRN.grid(row = 0, column = 3, sticky = 'news')###
+
     def training_func(self):###
         self.training_counter += 1###
         self.strvars['stat'].set(f'Нажатий кнопки: {self.training_counter}')###
