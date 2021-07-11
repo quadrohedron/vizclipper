@@ -388,7 +388,7 @@ class Clipper(ttk.Frame):
                 self.LOGWINDOW.destroy()
             self.LOGWINDOW.protocol('WM_DELETE_WINDOW', cb)
             self.LOGGER = ReadOnlyText(self.LOGWINDOW, width = 40, height = 24, wrap = tk.WORD)
-            self.LOGGER.pack()
+            self.LOGGER.pack(side="top", fill="both", expand=True, padx=0, pady=0)
             self.LOGGER.insert('1.0', self.LOGTEXT.get())
         else:
             self.LOGWINDOW.destroy()
