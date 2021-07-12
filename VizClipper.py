@@ -15,7 +15,7 @@ DEBUG = False
 DEFAULT_PATHS = {
     'C:/Program Files (x86)/Vizrt/Viz3/ev_send.exe' : '3.6',
     'C:/Program Files/Vizrt/Viz3/ev_send.exe'       : '3.14',
-    'C:/Program Files (x86)/VizDBG/ev_send.exe'     : 'DBG',
+    './ev_send/dist/ev_send.exe'                    : 'DBG',
 }
 
 
@@ -33,7 +33,7 @@ class ReadOnlyText(tk.Text):
         self.bind('<Key>', lambda e: 'break')
 
 class Clipper(ttk.Frame):
-    FRAMERATE = 60
+    FRAMERATE = 25
     evs_path = './ev_send.exe'
     viz_version = '3.6'
     channel = 1
@@ -72,6 +72,8 @@ class Clipper(ttk.Frame):
         self.intvars = {k: tk.IntVar(self.master) for k in (
             'unlim', 'sync', 'sync_delay_chk',
         )}
+        #
+        self.params_locked = tk.IntVar(self.master, 0)
         #
         self._llb = False
         self._lli = 0
@@ -245,6 +247,16 @@ class Clipper(ttk.Frame):
             state = 'normal' if self.intvars['sync_delay_chk'].get() else 'disabled'
             self.wsSyncDelayVal.config(state = state)
         self.intvars['sync_delay_chk'].trace_add('write', syncdel_cb)
+        #
+        def param_cb(*args):
+            if self.params_locked.get():
+                for w in (self.wrLenFrames, self.wrLenSeconds, self.weLenVal, self.wcLenUnlimited, self.wcSyncDelay, self.wsSyncDelayVal):
+                    w.configure(state = 'disabled')
+            else:
+                self.wcLenUnlimited.configure(state = 'normal')
+                unlim_cb()
+                sync_cb()
+        self.params_locked.trace_add('write', param_cb)
 
         # Log on completion
         self._log('init', 'UI init complete.')
@@ -430,7 +442,7 @@ class Clipper(ttk.Frame):
     
     def initCO(self, stop_animation = False):
         if stop_animation:
-            self.isend('-1 RENDERER*STAGE STOP')
+            self.isend('RENDERER*STAGE STOP')
         cmd_queue = [
             'CONTROL FLUSH',
             'CREATE VIDEO_SET 1',
@@ -442,7 +454,7 @@ class Clipper(ttk.Frame):
             'OPTION VIDEO_SET AUDIO ch=8'
         ]
         for cmd in cmd_queue:
-            self.isend('-1 RENDERER*VIDEO*CLIPOUT*1*'+cmd)
+            self.isend('RENDERER*VIDEO*CLIPOUT*1*'+cmd)
 
     def cc_send(self):
         ccroot = f'RENDERER*VIDEO*CLIPOUT*{self.channel}*'
@@ -468,9 +480,9 @@ class Clipper(ttk.Frame):
         res = self.runcmd(f'"{self.evs_path}" "{command}"')
         #print('DEBUG: ISEND RESPONSE:', res)
         if res.isspace():
-            self.stattext.set(f'{command} command pushed.')
+            self.strvars['stat'].set(f'{command} command pushed.')
         else:
-            self.stattext.set(res.decode().replace('\n', ' \\n '))
+            self.strvars['stat'].set(res.decode().replace('\n', ' \\n '))
     
     def repl(self):
         code = self.code.get('1.0', tk.END).strip()
@@ -536,26 +548,30 @@ class Clipper(ttk.Frame):
             self.SCENERUNNING = False
         else:
             self.initCO()
+        self.isend(f'RENDERER*VIDEO*CLIPOUT*1*NAME SET {dr}/{fn}')
         self._manage_wrc('set')
 
     def rctrl_go(self):
         if not self.intvars['unlim'].get():
             lim = float(self.strvars['reclen'].get())
             if self.strvars['lentype'].get() == 'frames':
-                lim /= self.FRAMERATE-1
+                lim /= self.FRAMERATE
+                lim += 0.1
                 cmdarg = str(int(self.strvars['reclen'].get()))
             else:
                 cmdarg = '0'
             self.tLimit = lim
             self.tStamp = time.perf_counter()
             if self.intvars['sync'].get():
-                self.isend('-1 RENDERER*STAGE CONTINUE')
-            self.isend('-1 RENDERER*VIDEO*CLIPOUT*1*RECORD '+cmdarg)
+                self.isend('RENDERER*STAGE CONTINUE')
+            self.isend('RENDERER*VIDEO*CLIPOUT*1*RECORD '+cmdarg)
             self._run_limited()
         else:
             self.tStamp = time.perf_counter()
-            self.isend('-1 RENDERER*VIDEO*CLIPOUT*1*RECORD 0')
+            self.isend('RENDERER*VIDEO*CLIPOUT*1*RECORD 0')
             self._run_unlimited()
+        self.params_locked.set(1)
+        self._manage_wrc('run')
 
     def rctrl_stop(self, from_mainthread = True):
         if not self.thread_handle is None:
@@ -564,28 +580,28 @@ class Clipper(ttk.Frame):
         if self.RECRUNNING:
             self.ftRec.cancel()
             self.RECRUNNING = False
-        if self.intvars['unlim'].get():
-            self.isend('-1 RENDERER*STAGE STOP')
-        if self.intvars['sync'].get():
-            self.isend('-1 RENDERER*STAGE STOP')
+        if self.intvars['unlim'].get() or self.intvars['sync'].get():
+            self.isend('RENDERER*STAGE STOP')
         if from_mainthread:
-            self._update_duration(time.perf_counter()-self.tStamp+self.tDuration, False)
-        self.isend('-1 RENDERER*VIDEO*CLIPOUT*1*CONTROL FLUSH')
+            self._update_duration(time.perf_counter()-self.tStamp, False)
+        self.isend('RENDERER*VIDEO*CLIPOUT*1*CONTROL FLUSH')
+        self.params_locked.set(0)
+        self._manage_wrc('stop')
     
     def _run_unlimited(self):
-        self._update_duration(time.perf_counter()-self.tStamp+self.tDuration, False)
+        self._update_duration(time.perf_counter()-self.tStamp, False)
         self.thread_handle = self.root.after(50, self._run_unlimited)
 
     def _run_limited(self):
-        self._update_duration(time.perf_counter()-self.tStamp+self.tDuration, False)
-        dt = self.tLimit-(time.perf_counter()-self.tStamp+self.tDuration)
+        self._update_duration(time.perf_counter()-self.tStamp, False)
+        dt = self.tLimit-(time.perf_counter()-self.tStamp)
         if dt > 0.05:
             self.thread_handle = self.root.after(50, self._run_limited)
         else:
             self.thread_handle = self.root.after(int(1000*dt), self._finish_limited)
     
     def _finish_limited(self):
-        self._update_duration(time.perf_counter()-self.tStamp+self.tDuration, False)
+        self._update_duration(time.perf_counter()-self.tStamp, False)
         self.thread_handle = None
         self.rctrl_stop(False)
 
@@ -605,26 +621,24 @@ class Clipper(ttk.Frame):
         self.isend('-1 RENDERER*STAGE CONTINUE')
 
     def style_setup(self):
-        self.STYLE.configure('h0.TLabel',
-            font = ('Arial', 36, 'bold'),
-            anchor = tk.CENTER,
-            relief = tk.RAISED
-        )
-        self.STYLE.configure('h1.TLabel',
-            font = ('Arial', 18, 'bold'),
-            anchor = tk.CENTER,
-            relief = tk.RAISED
-        )
-        self.STYLE.configure('centered.TLabel', anchor = tk.CENTER)
-        self.STYLE.configure('timer.TLabel',
-            anchor = tk.CENTER, background = '#004040', foreground = '#00e0e0',
-            padding = (0, 10), font = ('default', 12, 'bold')
-        )
-        self.STYLE.configure('status.TLabel', anchor = tk.CENTER, foreground = '#0000a0')
-        #
-        self.STYLE.configure('rctrl.TButton', justify = tk.CENTER, padding = (-6, 0))
-        #
-        self.STYLE.configure('centered.TCheckbutton', anchor = tk.CENTER)
+        if not os_acc('./VCStyle.cfg', F_OK):
+            return None
+        with open('./VCStyle.cfg', 'r') as f:
+            src = f.read().strip()
+        style = None
+        cnf = {}
+        for line in src.split('\n'):
+            if line.strip()[0] == '#':
+                continue
+            if '=' in line:
+                a, b = [x.strip() for x in line.strip().split('=', 1)]
+                cnf[a] = eval(b)
+            else:
+                if not style is None:
+                    self.STYLE.configure(style, **cnf)
+                style = line.strip().split(':', 1)[0]
+                cnf.clear()
+        self.STYLE.configure(style, **cnf)
 
     def training_setup(self, frame):
         self.training_counter = 0###
